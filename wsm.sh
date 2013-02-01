@@ -97,6 +97,6 @@ while (( $http_code == 0 || $http_code != $expectedcode ))
     fi
 done
 
-if $stdout ; echo "" ; fi
+if $stdout ; then echo "" ; fi
 log "Server is now returning expected code!"
 exit 0
