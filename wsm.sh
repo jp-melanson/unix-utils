@@ -69,7 +69,7 @@ function log ()
 {
   # log to console, notification system if enabled
   echo "[WebServerMonitor] $1"
-  if $notification ; then notify-send "WebServerMonitor" "$1" ; fi
+  if $notification ; then notify-send -t 20000 "WebServerMonitor" "$1" ; fi
 }
 
 curl_url
