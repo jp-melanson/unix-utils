@@ -83,4 +83,4 @@ while (( $http_code == 0 || $http_code != $expectedcode ))
     fi
 done
 
-log "Server is now returning expected code!"; exit 0
+echo ""; log "Server is now returning expected code!"; exit 0
