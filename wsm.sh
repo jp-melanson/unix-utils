@@ -19,13 +19,13 @@
 ##################################################################################################
 
 # defaults for options
-ident=$0
 notification=false
-interval=2
-maxwait=300
+interval=5
+maxwait=600
+expectedcode=200
 
 # cli options parsing with getopt
-if ! options=$(getopt -o h\?:i:m:n -l help,interval,maxwait,notif: -- "$@")
+if ! options=$(getopt -o h\?:e:i:m:n -l help,interval,maxwait,notif: -- "$@")
 then exit 1 ; fi
 
 # options handling
@@ -33,9 +33,10 @@ set -- $options
 while [ $# -gt 0 ]
 do
     case $1 in
+    -e|--expectedcode) expectedcode="`echo $2 | sed -e "s/^'\\|'$//g"`" ; shift ;;
     -i|--interval) interval="`echo $2 | sed -e "s/^'\\|'$//g"`" ; shift ;;
     -m|--maxwait) maxwait="`echo $2 | sed -e "s/^'\\|'$//g"`" ; shift ;;
-    -n|--notification) notification=true ; shift;;
+    -n|--notification) notification=true ;;
     -h|--help|-\?) echo -e "Usage: $0 [options] url" ; exit;;
     (--) shift; break;;
     (-*) echo "$0: error - unrecognized option $1" 1>&2; exit 1;;
@@ -44,44 +45,42 @@ do
     shift
 done
 
-# remaining option is url, ignore everything else
-url=$1
+# remaining option is url, ignore everything else for now
+if [ -z $1 ]
+  then echo "No url provided"; exit;
+  else url="`echo $1 | sed -e "s/^'\\|'$//g"`"
+fi
 
-# return http code from response, converting '000' code as 0
 function curl_url ()
 {
-  echo "`curl -sL -w %{http_code} -I \"$url\" -o /dev/null | sed s/000/0/`"
+  # return http code from response, converting '000' code as 0
+  http_code=$(curl --write-out %{http_code} --silent --output /dev/null $url)
 }
 
 function log ()
 {
-  echo "$1"
-  if [ $notification ]
-    then notify-send "$ident" "$1" ; fi
+  # log to console, notification system if enabled
+  echo "[WebServerMonitor] $1"
+  if $notification ; then notify-send "WebServerMonitor" "$1" ; fi
 }
 
-http_code=`curl_url`
-if [ $http_code -ge 500 -o $http_code -eq 0 ]
+curl_url
+if (( $http_code == 0 || $http_code != $expectedcode ))
   then
-    echo "Waiting for web server [$url] to become available every $interval seconds, waiting $maxwait seconds at most."
+    echo "Waiting for server at url [$url] to return status code [$expectedcode] every [$interval] seconds, waiting [$maxwait] seconds at most."
 else
-  log "Web server already [$url] responding. Exiting"
-  exit 0
+  log "Server returning expected code already"; exit 0;
 fi
 
-while [ $http_code -ge 500 -o $http_code -eq 0 ]
+while (( $http_code == 0 || $http_code != $expectedcode ))
   do
-    http_code=`curl_url`
     echo -n "."
     sleep $interval
+    curl_url
     maxwait=`expr $maxwait - $interval`
     if [ $maxwait -le 0 ]
-      then
-        echo ""
-        log "Waited maximum amount of time and server is still unresponding. Exiting"
-        exit -1
+      then echo ""; log "Server did not respond in specified amout of time"; exit -1
     fi
 done
 
-log "Server is now responding!"
-exit 0
+log "Server is now returning expected code!"; exit 0
