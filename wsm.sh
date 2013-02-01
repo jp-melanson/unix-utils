@@ -19,6 +19,7 @@
 ##################################################################################################
 
 # defaults for options
+stdout=true
 notification=false
 interval=5
 maxwait=600
@@ -30,10 +31,11 @@ usage="${usage}\n\t-e, --expectedcode [HTTP STATUS CODE]\tHTTP status code expec
 usage="${usage}\n\t-i, --interval [TIME]\t\t\tPolling interval (in seconds)."
 usage="${usage}\n\t-m, --maxwait [TIME]\t\t\tMaximum amount of time (in seconds) to wait for the web server to provide the expected status code."
 usage="${usage}\n\t-n, --notif\t\t\t\tEnable notify-send notifications."
+usage="${usage}\n\t-o, --notifonly\t\t\t\tEnable notify-send notifications, but not stdio logging."
 
 
 # cli options parsing with getopt
-if ! options=$(getopt -o h\?:e:i:m:n -l help,expectedcode,interval,maxwait,notif: -- "$@")
+if ! options=$(getopt -o h\?:e:i:m:no -l help,expectedcode,interval,maxwait,notif,notifonly: -- "$@")
 then exit 1 ; fi
 
 # options handling
@@ -44,7 +46,8 @@ do
     -e|--expectedcode) expectedcode="`echo $2 | sed -e "s/^'\\|'$//g"`" ; shift ;;
     -i|--interval) interval="`echo $2 | sed -e "s/^'\\|'$//g"`" ; shift ;;
     -m|--maxwait) maxwait="`echo $2 | sed -e "s/^'\\|'$//g"`" ; shift ;;
-    -n|--notification) notification=true ;;
+    -n|--notif) notification=true ;;
+    -o|--notifonly) notification=true; stdout=false ;;
     -h|--help|-\?) echo -e "$usage" ; exit;;
     (--) shift; break;;
     (-*) echo "$0: error - unrecognized option $1" 1>&2; exit 1;;
@@ -53,9 +56,16 @@ do
     shift
 done
 
+function log ()
+{
+  # log to console, notification system if enabled
+  if $stdout ; then echo "[WebServerMonitor] $1" ; fi
+  if $notification ; then notify-send -t 20000 "WebServerMonitor" "$1" ; fi
+}
+
 # remaining option is url, ignore everything else for now
 if [ -z $1 ]
-  then echo "No url provided"; exit;
+  then log "No url provided"; exit;
   else url="`echo $1 | sed -e "s/^'\\|'$//g"`"
 fi
 
@@ -65,30 +75,28 @@ function curl_url ()
   http_code=$(curl --write-out %{http_code} --silent --output /dev/null $url)
 }
 
-function log ()
-{
-  # log to console, notification system if enabled
-  echo "[WebServerMonitor] $1"
-  if $notification ; then notify-send -t 20000 "WebServerMonitor" "$1" ; fi
-}
-
 curl_url
 if (( $http_code == 0 || $http_code != $expectedcode ))
   then
-    echo "Waiting for server at url [$url] to return status code [$expectedcode] every [$interval] seconds, waiting [$maxwait] seconds at most."
+    log "Waiting for server at url [$url] to return status code [$expectedcode] every [$interval] seconds, waiting [$maxwait] seconds at most."
 else
   log "Server returning expected code already"; exit 0;
 fi
 
 while (( $http_code == 0 || $http_code != $expectedcode ))
   do
-    echo -n "."
+    if $stdout ; then echo -n "." ; fi
     sleep $interval
     curl_url
     maxwait=`expr $maxwait - $interval`
     if [ $maxwait -le 0 ]
-      then echo ""; log "Server did not respond in specified amout of time"; exit -1
+      then
+        if $stdout ; then echo "" ; fi
+        log "Server did not respond in specified amout of time";
+        exit -1
     fi
 done
 
-echo ""; log "Server is now returning expected code!"; exit 0
+if $stdout ; echo "" ; fi
+log "Server is now returning expected code!"
+exit 0
