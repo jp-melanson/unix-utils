@@ -56,7 +56,8 @@ function curl_url ()
 function log ()
 {
   echo "$1"
-  notify-send "$ident" "$1"
+  if [ $notification ]
+    then notify-send "$ident" "$1" ; fi
 }
 
 http_code=`curl_url`
