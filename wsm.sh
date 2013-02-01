@@ -23,9 +23,17 @@ notification=false
 interval=5
 maxwait=600
 expectedcode=200
+usage="Usage: $0 [options...] <url>"
+usage="${usage}\nOptions:"
+usage="${usage}\n\t-h, --help\t\t\t\tDisplay help."
+usage="${usage}\n\t-e, --expectedcode [HTTP STATUS CODE]\tHTTP status code expected to consider web server up."
+usage="${usage}\n\t-i, --interval [TIME]\t\t\tPolling interval (in seconds)."
+usage="${usage}\n\t-m, --maxwait [TIME]\t\t\tMaximum amount of time (in seconds) to wait for the web server to provide the expected status code."
+usage="${usage}\n\t-n, --notif\t\t\t\tEnable notify-send notifications."
+
 
 # cli options parsing with getopt
-if ! options=$(getopt -o h\?:e:i:m:n -l help,interval,maxwait,notif: -- "$@")
+if ! options=$(getopt -o h\?:e:i:m:n -l help,expectedcode,interval,maxwait,notif: -- "$@")
 then exit 1 ; fi
 
 # options handling
@@ -37,7 +45,7 @@ do
     -i|--interval) interval="`echo $2 | sed -e "s/^'\\|'$//g"`" ; shift ;;
     -m|--maxwait) maxwait="`echo $2 | sed -e "s/^'\\|'$//g"`" ; shift ;;
     -n|--notification) notification=true ;;
-    -h|--help|-\?) echo -e "Usage: $0 [options] url" ; exit;;
+    -h|--help|-\?) echo -e "$usage" ; exit;;
     (--) shift; break;;
     (-*) echo "$0: error - unrecognized option $1" 1>&2; exit 1;;
     (*) break;;
