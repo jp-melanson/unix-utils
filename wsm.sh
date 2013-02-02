@@ -98,7 +98,7 @@ if [ $mode != $MODE_POLL ] ; then echo "Unsupported mode, use one of [$MODE_POLL
 if (( $result != $code ))
   then
     log "Polling web server at url [$url] for expected response code [$code] every [$interval] seconds and waiting [$timeout] seconds at most."
-else log "Web server already responding with code [$code]"; exit 0; fi
+else log "Web server already responding with expected status code [$code]"; exit 0; fi
 
 # begin polling
 remaining=`expr $timeout`
@@ -109,7 +109,7 @@ while (( $result != $code ))
     if [ $remaining -le 0 ]
       then
         if $verbose ; then echo "" ; fi
-        log "Time is out, server never respond with expected code."
+        log "Time is out, server did not respond in time with expected status code [$code]."
         exit 0
     fi
     sleep $interval
@@ -118,5 +118,5 @@ while (( $result != $code ))
 done
 
 if $verbose ; then echo "" ; fi
-log "Server has returned expected response code $code."
+log "Server has returned expected status code [$code]."
 exit 0
