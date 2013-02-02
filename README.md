@@ -1,7 +1,6 @@
-bash-utils
+unix-utils
 ==========
 
-A set of bash script and tools.
+A small set of utility scripts for unix-compatible operating systems.
 
-Current list:
- - *wsm.sh* : A script to monitor a web server for a specific status code.
+ - _wsm_ : A simple *w*eb *s*erver *m*onitor command-line utility to poll a web server for a specific http status code.
