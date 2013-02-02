@@ -18,24 +18,33 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ##################################################################################################
 
+MODE_POLL="poll" # continous polling for the http status code
+MODE_CODE="code" # fetch http status code once and exit
+NOTIFICATIONS_EXPIRE_TIME=20000 # 20 seconds
+
 # defaults for options
-stdout=true
-notification=false
+code=200
+debug=false
 interval=5
-maxwait=600
-expectedcode=200
+mode=$MODE_POLL
+notifications=false
+timeout=600
+verbose=false
+
 usage="Usage: $0 [options...] <url>"
 usage="${usage}\nOptions:"
-usage="${usage}\n\t-h, --help\t\t\t\tDisplay help."
-usage="${usage}\n\t-e, --expectedcode [HTTP STATUS CODE]\tHTTP status code expected to consider web server up."
-usage="${usage}\n\t-i, --interval [TIME]\t\t\tPolling interval (in seconds)."
-usage="${usage}\n\t-m, --maxwait [TIME]\t\t\tMaximum amount of time (in seconds) to wait for the web server to provide the expected status code."
-usage="${usage}\n\t-n, --notif\t\t\t\tEnable notify-send notifications."
-usage="${usage}\n\t-o, --notifonly\t\t\t\tEnable notify-send notifications, but not stdio logging."
+usage="${usage}\n\t-c, --code [HTTP STATUS CODE]\tHTTP status code to expect from web server."
+usage="${usage}\n\t-d, --debug\t\t\tDebug mode combined with verbose will print extra details."
+usage="${usage}\n\t-h, --help\t\t\tDisplay help."
+usage="${usage}\n\t-i, --interval [TIME]\t\tPolling interval (in seconds)."
+usage="${usage}\n\t-m, --mode [MODE]\t\t\"$MODE_POLL\" waits for expected code until a timeout occurs, \"$MODE_CODE\" fetch code once."
+usage="${usage}\n\t-n, --notifications\t\tEnable notify-send notifications."
+usage="${usage}\n\t-t, --timeout [TIME]\t\tMaximum amount of time (in seconds) to wait for the expected status code."
+usage="${usage}\n\t-v, --verbose\t\t\tVerbose (details about on-going process to stdout)."
 
 
 # cli options parsing with getopt
-if ! options=$(getopt -o h\?:e:i:m:no -l help,expectedcode,interval,maxwait,notif,notifonly: -- "$@")
+if ! options=$(getopt -o c:dh\?:i:m:nt:v -l code,help,interval,mode,notifications,timeout,verbose: -- "$@")
 then exit 1 ; fi
 
 # options handling
@@ -43,12 +52,14 @@ set -- $options
 while [ $# -gt 0 ]
 do
     case $1 in
-    -e|--expectedcode) expectedcode="`echo $2 | sed -e "s/^'\\|'$//g"`" ; shift ;;
-    -i|--interval) interval="`echo $2 | sed -e "s/^'\\|'$//g"`" ; shift ;;
-    -m|--maxwait) maxwait="`echo $2 | sed -e "s/^'\\|'$//g"`" ; shift ;;
-    -n|--notif) notification=true ;;
-    -o|--notifonly) notification=true; stdout=false ;;
+    -c|--code) code="`echo $2 | sed -e "s/^'\\|'$//g"`" ; shift ;;
+    -d|--debug) debug=true ;;
     -h|--help|-\?) echo -e "$usage" ; exit;;
+    -i|--interval) interval="`echo $2 | sed -e "s/^'\\|'$//g"`" ; shift ;;
+    -m|--mode) mode="`echo $2 | sed -e "s/^'\\|'$//g"`" ; shift ;;
+    -n|--notifications) notifications=true ;;
+    -t|--timeout) timeout="`echo $2 | sed -e "s/^'\\|'$//g"`" ; shift ;;
+    -v|--verbose) verbose=true ;;
     (--) shift; break;;
     (-*) echo "$0: error - unrecognized option $1" 1>&2; exit 1;;
     (*) break;;
@@ -56,47 +67,56 @@ do
     shift
 done
 
-function log ()
-{
-  # log to console, notification system if enabled
-  if $stdout ; then echo "[WebServerMonitor] $1" ; fi
-  if $notification ; then notify-send -t 20000 "WebServerMonitor" "$1" ; fi
-}
-
 # remaining option is url, ignore everything else for now
 if [ -z $1 ]
   then log "No url provided"; exit;
   else url="`echo $1 | sed -e "s/^'\\|'$//g"`"
 fi
 
+# Log to console if verbose mode is enabled.
+# Also send out notifications if enabled
+function log ()
+{
+  if $verbose ; then echo "[WebServerMonitor] $1"; fi
+  if $notifications ; then notify-send -t $NOTIFICATIONS_EXPIRE_TIME "WebServerMonitor" "$1"; fi
+}
+
+# Send a HTTP HEAD request to get web server status.
 function curl_url ()
 {
-  # return http code from response, converting '000' code as 0
-  http_code=$(curl --write-out %{http_code} --silent --output /dev/null $url)
+  result=`curl --write-out %{http_code} --silent --output /dev/null $url | sed s/000/0/`
 }
 
 curl_url
-if (( $http_code == 0 || $http_code != $expectedcode ))
-  then
-    log "Waiting for server at url [$url] to return status code [$expectedcode] every [$interval] seconds, waiting [$maxwait] seconds at most."
-else
-  log "Server returning expected code already"; exit 0;
-fi
+if $debug ; then echo $result; fi
 
-while (( $http_code == 0 || $http_code != $expectedcode ))
+# code only mode
+if [ $mode == $MODE_CODE ] ; then echo $result; exit 0; fi
+# unsupported mode
+if [ $mode != $MODE_POLL ] ; then echo "Unsupported mode, use one of [$MODE_POLL, $MODE_CODE]"; exit 1; fi
+# poll mode
+if (( $result != $code ))
+  then
+    log "Polling web server at url [$url] for expected response code [$code] every [$interval] seconds and waiting [$timeout] seconds at most."
+else log "Web server already responding with code [$code]"; exit 0; fi
+
+# begin polling
+remaining=`expr $timeout`
+while (( $result != $code ))
   do
-    if $stdout ; then echo -n "." ; fi
+    if $verbose ; then echo -n "." ; fi
+    remaining=`expr $remaining - $interval`
+    if [ $remaining -le 0 ]
+      then
+        if $verbose ; then echo "" ; fi
+        log "Time is out, server never respond with expected code."
+        exit 0
+    fi
     sleep $interval
     curl_url
-    maxwait=`expr $maxwait - $interval`
-    if [ $maxwait -le 0 ]
-      then
-        if $stdout ; then echo "" ; fi
-        log "Server did not respond in specified amout of time";
-        exit -1
-    fi
+    if $debug ; then echo $result; fi
 done
 
-if $stdout ; then echo "" ; fi
-log "Server is now returning expected code!"
+if $verbose ; then echo "" ; fi
+log "Server has returned expected response code $code."
 exit 0
